@@ -1,0 +1,11 @@
+# Explicit root kustomization for the Flux Kustomization path ./clusters/staging.
+# Without this file kustomize-controller auto-generates an equivalent one, but
+# then ANY stray .yaml dropped at this level (or a new manifest dir without its
+# own kustomization.yaml) changes what gets applied — and one undecodable file
+# hard-errors the WHOLE Kustomization, flux-system included. Explicit = boring.
+# Adding a new app: create the dir with its own kustomization.yaml, add it here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - flux-system
+  - monitoring

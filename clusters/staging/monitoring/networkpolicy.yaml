@@ -1,0 +1,54 @@
+# Egress restriction for the tunnel connector. Rationale: cloudflared's
+# Public Hostname routes are configured in the Cloudflare dashboard, so a
+# compromised Cloudflare account could route public hostnames to ANY
+# in-cluster service (kube API, Flux, future apps). This policy pins the
+# connector to exactly what it needs: Kuma, DNS, and the Cloudflare edge.
+# k3s enforces NetworkPolicy out of the box (embedded netpol controller).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cloudflared-egress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflared
+  policyTypes:
+    - Egress
+  egress:
+    # Uptime Kuma (the only service the tunnel is allowed to reach)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: uptime-kuma
+      ports:
+        - port: 3001
+          protocol: TCP
+    # Cluster DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Cloudflare edge: QUIC 7844 (primary) + 443 (fallback). Excludes the
+    # pod/service CIDRs (k3s defaults) and the home LAN so "internet only".
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+              - 192.168.178.0/24
+      ports:
+        - port: 7844
+          protocol: UDP
+        - port: 7844
+          protocol: TCP
+        - port: 443
+          protocol: TCP
