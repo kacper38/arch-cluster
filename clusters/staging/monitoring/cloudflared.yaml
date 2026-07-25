@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: cloudflared
+    app.kubernetes.io/part-of: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflared
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloudflared
+        app.kubernetes.io/part-of: monitoring
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: cloudflared
+          # Cloudflare supports connector releases for ~1 year — bump this a
+          # couple of times a year. Tag verified on Docker Hub 2026-07-25.
+          image: cloudflare/cloudflared:2026.7.3
+          args:
+            - tunnel
+            - --no-autoupdate
+            # Metrics bound to loopback on purpose: nothing scrapes them and
+            # 0.0.0.0 would expose /metrics to every pod (no reason to).
+            # Debugging still works: kubectl -n monitoring port-forward <pod> 2000:2000
+            - --metrics
+            - 127.0.0.1:2000
+            - run
+          env:
+            # The Secret "cloudflared-token" is NOT in git — it is created
+            # manually on the cluster (see README.md, one-time owner steps).
+            # Until it exists, this pod shows CreateContainerConfigError
+            # ("secret not found" in kubectl describe); that is expected and
+            # self-heals once the Secret is created.
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-token
+                  key: token
+          # Deliberately NO livenessProbe: cloudflared's /ready reflects edge
+          # connectivity, not process health — a WAN blip would put the pod in
+          # a restart loop while cloudflared already reconnects internally
+          # with backoff. On fatal errors the process exits and the Deployment
+          # restarts it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            # The image declares USER as the NON-NUMERIC name "nonroot"
+            # (distroless) — kubelet cannot verify a named user, so
+            # runAsNonRoot: true REQUIRES the explicit numeric runAsUser or
+            # the pod is stuck in CreateContainerConfigError forever (and it
+            # looks identical to the missing-Secret state). Do not remove.
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault

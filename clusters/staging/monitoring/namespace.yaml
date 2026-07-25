@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/name: monitoring
+  annotations:
+    # Flux prune protection: pruning this Namespace would cascade-delete the
+    # PVC (Kuma data) and the manually-created cloudflared-token Secret.
+    # A git refactor must never be a data-loss event.
+    kustomize.toolkit.fluxcd.io/prune: disabled

@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uptime-kuma-data
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: uptime-kuma
+    app.kubernetes.io/part-of: monitoring
+  annotations:
+    # Flux prune protection: a git-side delete/rename of this dir must NEVER
+    # garbage-collect the PVC (local-path reclaim is Delete -> data gone).
+    # Decommissioning requires an explicit kubectl delete.
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  # local-path is the k3s built-in default StorageClass (rancher local-path-provisioner)
+  storageClassName: local-path
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uptime-kuma
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: uptime-kuma
+    app.kubernetes.io/part-of: monitoring
+spec:
+  replicas: 1
+  # Recreate: Kuma uses SQLite on a single RWO PVC — a RollingUpdate would
+  # briefly run two writers against the same database file. Never change this.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: uptime-kuma
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: uptime-kuma
+        app.kubernetes.io/part-of: monitoring
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # The -rootless image variant declares USER as the NON-NUMERIC name
+        # "node" — kubelet cannot verify a named user, so runAsNonRoot: true
+        # REQUIRES the explicit numeric runAsUser or the pod is stuck in
+        # CreateContainerConfigError. Do not remove runAsUser.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: uptime-kuma
+          # Stable 2.x line, official rootless variant (fresh install — no 1.x
+          # data to migrate). Tag verified on Docker Hub 2026-07-25.
+          # On bump: keep the runAsUser pin above (see comment there).
+          image: louislam/uptime-kuma:2.4.0-rootless
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: TZ
+              value: Europe/Warsaw
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          # Kuma answers GET / with a 302 redirect — httpGet probes treat any
+          # status < 400 as success, so this is a valid health signal.
+          # startupProbe owns the slow first boot (DB setup can take minutes on
+          # modest hardware: up to 30 x 10s = 5 min grace, and it must not be
+          # killed mid-migration); liveness/readiness take over afterwards.
+          startupProbe:
+            httpGet:
+              path: /
+              port: 3001
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: uptime-kuma-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: uptime-kuma
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: uptime-kuma
+    app.kubernetes.io/part-of: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: uptime-kuma
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3001
