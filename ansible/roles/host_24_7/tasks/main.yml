@@ -46,20 +46,20 @@
 
 - name: Read current Wi-Fi power save state
   ansible.builtin.command: iw dev wlan0 get power_save
-  register: wifi_power_save
+  register: host_24_7_wifi_power_save
   changed_when: false
   # a pure read — run it even in --check so the next task's condition works
   check_mode: false
 
 - name: Disable Wi-Fi power save now
   ansible.builtin.command: iw dev wlan0 set power_save off
-  when: "': on' in wifi_power_save.stdout"
+  when: "': on' in host_24_7_wifi_power_save.stdout"
   changed_when: true
 
 - name: Check whether the k3s kubeconfig exists yet
   ansible.builtin.stat:
     path: /etc/rancher/k3s/k3s.yaml
-  register: k3s_kubeconfig
+  register: host_24_7_k3s_kubeconfig
 
 - name: Ensure ~/.kube exists for kacper
   ansible.builtin.file:
@@ -78,4 +78,4 @@
     owner: kacper
     group: kacper
     mode: "0600"
-  when: k3s_kubeconfig.stat.exists
+  when: host_24_7_k3s_kubeconfig.stat.exists
