@@ -1,0 +1,9 @@
+---
+# HUP, not restart: restarting systemd-logind drops active user sessions.
+- name: Reload logind
+  ansible.builtin.command: systemctl kill -s HUP systemd-logind
+  changed_when: true
+
+- name: Reload udev rules
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: true

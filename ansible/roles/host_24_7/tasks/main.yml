@@ -1,0 +1,81 @@
+---
+# Keep the pierun laptop awake and serving 24/7: lid closed, on AC, k3s up.
+
+- name: Ensure logind drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ignore lid switch and idle (logind drop-in)
+  ansible.builtin.copy:
+    src: laptop-server.conf
+    dest: /etc/systemd/logind.conf.d/laptop-server.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload logind
+
+- name: Mask all sleep-related systemd targets
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    masked: true
+  loop:
+    - sleep.target
+    - suspend.target
+    - hibernate.target
+    - hybrid-sleep.target
+
+- name: Install iw (wireless CLI, needed for power-save control)
+  # builtin.package auto-detects pacman on Arch — no community.general
+  # collection dependency on the control node.
+  ansible.builtin.package:
+    name: iw
+    state: present
+
+- name: Disable Wi-Fi power save on hotplug (udev rule)
+  ansible.builtin.copy:
+    src: 81-wifi-powersave.rules
+    dest: /etc/udev/rules.d/81-wifi-powersave.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload udev rules
+
+- name: Read current Wi-Fi power save state
+  ansible.builtin.command: iw dev wlan0 get power_save
+  register: wifi_power_save
+  changed_when: false
+  # a pure read — run it even in --check so the next task's condition works
+  check_mode: false
+
+- name: Disable Wi-Fi power save now
+  ansible.builtin.command: iw dev wlan0 set power_save off
+  when: "': on' in wifi_power_save.stdout"
+  changed_when: true
+
+- name: Check whether the k3s kubeconfig exists yet
+  ansible.builtin.stat:
+    path: /etc/rancher/k3s/k3s.yaml
+  register: k3s_kubeconfig
+
+- name: Ensure ~/.kube exists for kacper
+  ansible.builtin.file:
+    path: /home/kacper/.kube
+    state: directory
+    owner: kacper
+    group: kacper
+    mode: "0700"
+
+- name: Copy k3s kubeconfig for kacper
+  # guarded so the play also runs clean on a fresh host before k3s install
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /home/kacper/.kube/config
+    remote_src: true
+    owner: kacper
+    group: kacper
+    mode: "0600"
+  when: k3s_kubeconfig.stat.exists

@@ -1,10 +1,14 @@
 # monitoring — Uptime Kuma + Cloudflare Tunnel
 
-First application on the cluster. Flux (bootstrap in `clusters/staging/flux-system/`,
-Kustomization path `./clusters/staging`, interval 10m, prune enabled) applies this
-directory via the explicit root `clusters/staging/kustomization.yaml` once merged to
-`main` **and** pierun is powered on. No `kubectl apply` needed — git is the change
-record; hand-applying is break-glass only.
+First application on the cluster. Lives under `apps/staging/monitoring/` and is
+applied by the **`apps` Flux Kustomization CR** (`clusters/staging/apps.yaml`:
+path `./apps/staging`, interval 10m, prune enabled, `wait: true` — so
+`flux get kustomizations` honestly reports app readiness, not just "applied").
+`apps` depends on the `infrastructure` CR; both are reconciled from `main` by
+the bootstrap Kustomization (`clusters/staging/flux-system/`, path
+`./clusters/staging`) once merged **and** pierun is powered on. No
+`kubectl apply` needed — git is the change record; hand-applying is
+break-glass only.
 
 Components:
 
@@ -17,6 +21,23 @@ Components:
 - **NetworkPolicy** (`networkpolicy.yaml`) — pins cloudflared egress to
   Kuma + DNS + the Cloudflare edge, so a compromised Cloudflare account cannot
   route tunnels to arbitrary in-cluster services.
+- **Tunnel token** (`cloudflared-token.sops.yaml`, once created) — SOPS-encrypted
+  Secret in git, decrypted in-cluster by Flux. NOT `kubectl`-created.
+
+## One-time cluster bootstrap (before anything SOPS-encrypted can deploy)
+
+Create the age decryption key Secret for Flux — run from the laptop, against
+pierun. This is the **only** manually-created Secret on the cluster; everything
+else flows through git:
+
+```bash
+kubectl -n flux-system create secret generic sops-age \
+  --from-file=age.agekey=$HOME/.config/sops/age/keys.txt
+```
+
+The age **private** key is backed up in the password manager — if pierun is
+reinstalled, restore `keys.txt` from there and re-run this command. The public
+key (recipient) lives in the repo-root `.sops.yaml`.
 
 ## One-time owner steps (in order — the order is security-relevant)
 
@@ -24,16 +45,34 @@ Components:
    Create tunnel → **remote-managed** (Cloudflared connector) → name: `pierun-k8s`.
    Copy the tunnel token (long `eyJ...` string). Do NOT add a Public Hostname yet.
 
-2. **Create the token Secret on pierun** (this Secret is deliberately NOT in git):
+2. **Encrypt the token into git** (the Secret is SOPS-managed, never
+   `kubectl`-created). Write `apps/staging/monitoring/cloudflared-token.yaml`:
 
-   ```bash
-   kubectl -n monitoring create secret generic cloudflared-token \
-     --from-literal=token=<TOKEN>
+   ```yaml
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: cloudflared-token
+     namespace: monitoring
+   stringData:
+     token: <TOKEN>
    ```
 
-   If Flux hasn't reconciled yet, the `monitoring` namespace won't exist —
-   either wait for Flux (≤10m after merge) or `kubectl create namespace monitoring`
-   first; Flux will adopt it.
+   Then encrypt it, delete the plaintext, and wire it in:
+
+   ```bash
+   cd apps/staging/monitoring
+   sops --encrypt cloudflared-token.yaml > cloudflared-token.sops.yaml
+   rm cloudflared-token.yaml
+   ```
+
+   Uncomment BOTH commented lines in this directory's `kustomization.yaml`
+   (`- cloudflared.yaml` AND `- cloudflared-token.sops.yaml`) in the same
+   commit, then merge. This is the atomic tunnel enable: the connector and its
+   Secret always deploy together, so the `apps` Kustomization (wait: true)
+   stays green the whole time and no CreateContainerConfigError window exists.
+   Flux decrypts in-cluster via the `sops-age` Secret (see bootstrap above) —
+   the plaintext token never lands in git.
 
 3. **Claim the instance BEFORE exposing it.** A fresh Kuma has no pre-auth —
    the first visitor owns it, and the moment a Public Hostname exists the cert
@@ -71,11 +110,15 @@ Components:
 
 - **`CreateContainerConfigError` on cloudflared** has TWO distinct causes — check
   `kubectl -n monitoring describe pod <cloudflared-pod>`:
-  - *"secret \"cloudflared-token\" not found"* — expected before step 2;
-    self-heals once the Secret exists.
+  - *"secret \"cloudflared-token\" not found"* — expected before the encrypted
+    token (step 2) is merged and reconciled; self-heals once it is.
   - *"container has runAsNonRoot and image has non-numeric user"* — the
     `runAsUser: 65532` pin was removed from the manifest; restore it. This one
     NEVER self-heals and must not be waited out.
+- **`apps` Kustomization stuck on a decryption error** (`flux get kustomizations`
+  shows it failed) — the `sops-age` Secret is missing/wrong in `flux-system`, or
+  the file was encrypted to a different age recipient than `.sops.yaml` pins.
+  Re-run the bootstrap step with the backed-up key.
 - **`CrashLoopBackOff` on cloudflared** — token invalid/revoked or Cloudflare
   unreachable; check pod logs.
 - **Kuma data is node-local** — the `local-path` PV lives on pierun's disk. If

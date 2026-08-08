@@ -1,0 +1,124 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  KUSTOMIZE_VERSION: v5.4.3
+  KUBECONFORM_VERSION: v0.6.7
+
+jobs:
+  kustomize-kubeconform:
+    name: kustomize build + kubeconform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -fsSL -o /tmp/kustomize.tar.gz \
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/kustomize.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/kustomize /usr/local/bin/kustomize
+          kustomize version
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL -o /tmp/kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
+          kubeconform -v
+
+      - name: Validate kustomize overlays
+        run: |
+          set -euo pipefail
+          # -skip Secret: secrets are sops-encrypted in-repo (the `sops:`
+          # metadata block breaks strict schema validation); plaintext leaks
+          # are caught by the no-plaintext-secrets job instead.
+          failed=0
+          for dir in clusters/staging apps/staging infrastructure; do
+            if [ ! -d "$dir" ]; then
+              echo "::notice::$dir does not exist yet, skipping"
+              continue
+            fi
+            echo "==> kustomize build $dir | kubeconform"
+            if ! kustomize build "$dir" | kubeconform \
+              -strict \
+              -ignore-missing-schemas \
+              -skip Secret \
+              -summary \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'; then
+              echo "::error::validation failed for $dir"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+  no-plaintext-secrets:
+    name: no plaintext secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tracked YAML for unencrypted Secrets
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r file; do
+            # Only a document-level "kind: Secret" counts — not comments or
+            # mentions of the word Secret elsewhere.
+            if grep -qE '^kind:[[:space:]]*\"?Secret\"?[[:space:]]*$' "$file"; then
+              case "$file" in
+                *.sops.yaml)
+                  if grep -q '^sops:' "$file" && grep -q 'encrypted_regex' "$file"; then
+                    echo "OK (sops-encrypted): $file"
+                  else
+                    echo "::error file=$file::$file matches *.sops.yaml but lacks sops markers (sops: / encrypted_regex)"
+                    failed=1
+                  fi
+                  ;;
+                *)
+                  echo "::error file=$file::plaintext 'kind: Secret' in $file — encrypt it with sops (*.sops.yaml)"
+                  failed=1
+                  ;;
+              esac
+            fi
+            # kustomize secretGenerator produces Secrets from plaintext
+            # literals without any 'kind: Secret' line — ban it outside sops
+            if grep -q '^secretGenerator:' "$file"; then
+              case "$file" in
+                *.sops.yaml) : ;;
+                *)
+                  echo "::error file=$file::secretGenerator with plaintext literals in $file — use a sops-encrypted Secret instead"
+                  failed=1
+                  ;;
+              esac
+            fi
+          done < <(git ls-files '*.yaml' '*.yml')
+          exit "$failed"
+
+  ansible-lint:
+    name: ansible-lint (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ansible-lint
+        run: pipx install ansible-lint
+
+      - name: Lint ansible/
+        run: |
+          if [ ! -d ansible ]; then
+            echo "::notice::ansible/ does not exist yet, skipping"
+            exit 0
+          fi
+          ansible-lint ansible/

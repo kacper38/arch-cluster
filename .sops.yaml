@@ -1,0 +1,14 @@
+# SOPS config — secrets live in git encrypted to the cluster age key; Flux
+# decrypts in-cluster (apps Kustomization CR, decryption.secretRef sops-age).
+# encrypted_regex: only data/stringData values are encrypted — metadata,
+# kind and comments stay plaintext so diffs remain reviewable.
+# NOTE: creation_rules match the INPUT path of `sops --encrypt`, so the
+# apps/.* rule is what lets `sops --encrypt cloudflared-token.yaml` work;
+# the \.sops\.yaml$ rule covers in-place edits of already-encrypted files.
+creation_rules:
+  - path_regex: \.sops\.yaml$
+    age: age1q7fd5hmsvvevg4tcrayn0vt0yqdu0d2d4edgmh2xsf6hhn4ve97q547ya9
+    encrypted_regex: ^(data|stringData)$
+  - path_regex: apps/.*
+    age: age1q7fd5hmsvvevg4tcrayn0vt0yqdu0d2d4edgmh2xsf6hhn4ve97q547ya9
+    encrypted_regex: ^(data|stringData)$

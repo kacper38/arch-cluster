@@ -1,0 +1,11 @@
+# macOS junk
+.DS_Store
+
+# machine-local tooling config — never part of the GitOps source of truth
+mcpclient.json
+.claude/settings.local.json
+
+# decrypted-secret-in-flight guard: the SOPS flow writes a plaintext Secret
+# briefly before encrypting; these names must never be committable
+cloudflared-token.yaml
+*.plain.yaml
