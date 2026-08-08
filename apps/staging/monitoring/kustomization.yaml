@@ -4,10 +4,8 @@ resources:
   - namespace.yaml
   - uptime-kuma.yaml
   - networkpolicy.yaml
-  # ATOMIC TUNNEL ENABLE: uncomment BOTH lines below in the SAME commit that
-  # adds the encrypted token (README "enable the tunnel" step). Keeping
-  # cloudflared out until its Secret exists keeps the apps Kustomization
-  # green from bootstrap (wait: true would otherwise report red for days on
-  # a CreateContainerConfigError pod) — and nothing may dependsOn a red CR.
-  # - cloudflared.yaml
-  # - cloudflared-token.sops.yaml
+  # cloudflared and its Secret are an atomic pair (enabled together, README
+  # "enable the tunnel" step) — removing either one alone leaves the apps
+  # Kustomization (wait: true) red on a CreateContainerConfigError pod.
+  - cloudflared.yaml
+  - cloudflared-token.sops.yaml
