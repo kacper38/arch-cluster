@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: cloudflared-token
+    namespace: monitoring
+stringData:
+    token: ENC[AES256_GCM,data:c6v/k28E6MnXyaR4p+uEtv/IeyVdZ/EklWMo58nL2tGcTZHoO/c2xNeBAQX1qvCEcpjeHse0iltIvc8ifp/yadx5xhoDWR7HgC95dRqmcDaZxHVeweWkPFGunp2FnwnIoN+q1XXtRfQkb7hQka+ssUekt10OL9wnDfZHpXZYeTEDN/ikINMPWJVuwll+piDDbinrPdQs5YWJWJmkF7tMA4Ze6gNq0+0H245IKc3hZTbtcwgdRZcI9A==,iv:iVTMvAwCHwr3zNmcA6LKtAgHC6U+pxTUwyhO58Z0i64=,tag:aupaCKyWoV3vye1XtVwa8g==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBIemxnSGRzdzdLN295cFN0
+            SHFIK2p6cDNJM0NPYVBsV2dYNkllUEgvVzJzCnpiSUhSanRBeUFjWmd6aDFQUERn
+            VzJ5RUJIS29WS3UrK0k3eXRnNi9uS2sKLS0tIDBDWi80cG5YcHhWZ2hxYVlEczlI
+            eUpVZ2JNeVdTOXgyY3ZRd1E4eHkzRVUKryqKxjxY1bVwp8orTk23kJCX/om/Ot3N
+            SbFOW9vIS1DoMmPH+5u43x0GsKqKMrY50LhPg7WaLzlyTDssx0O54Q==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1q7fd5hmsvvevg4tcrayn0vt0yqdu0d2d4edgmh2xsf6hhn4ve97q547ya9
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-08-08T19:29:49Z"
+    mac: ENC[AES256_GCM,data:icZdxGw44ig9CCist9xmZopeH4QxYHKz3lYvu5PiOBnth3IaORY5Pk+MwayrvJAZN3QCETjcyWcbIz3YOV/M20qpFKC0PC9vYftPvsnfdLDGlf7poMEA65CHfTcx5SphOc83JU0js25alpfhmIydvYDnen7iX1r0faRxy+9Fuf0=,iv:gBZdBBhro1Tr1g5llsH500wlcD671TbPJNWHyjq0xB4=,tag:IaWh+5WmuEUO70Pak7sE+Q==,type:str]
+    version: 3.13.2
