@@ -1,0 +1,6 @@
+---
+- name: Configure pierun for 24/7 laptop-server duty
+  hosts: pierun
+  become: true
+  roles:
+    - host_24_7

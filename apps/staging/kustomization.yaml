@@ -1,0 +1,6 @@
+# Apps layer for the staging cluster — applied by the "apps" Flux
+# Kustomization CR (clusters/staging/apps.yaml). One entry per app dir.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - monitoring

@@ -1,0 +1,8 @@
+# Infrastructure layer — applied by the "infrastructure" Flux Kustomization CR
+# BEFORE apps (apps dependsOn it). Reserved for cluster controllers: ingress,
+# cert-manager, storage drivers, etc. Empty on purpose: an explicit empty
+# resources list builds to nothing, so the CR reconciles green until the first
+# controller lands here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: []

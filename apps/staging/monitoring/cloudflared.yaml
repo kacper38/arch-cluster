@@ -33,11 +33,14 @@ spec:
             - 127.0.0.1:2000
             - run
           env:
-            # The Secret "cloudflared-token" is NOT in git — it is created
-            # manually on the cluster (see README.md, one-time owner steps).
-            # Until it exists, this pod shows CreateContainerConfigError
-            # ("secret not found" in kubectl describe); that is expected and
-            # self-heals once the Secret is created.
+            # The Secret "cloudflared-token" lives IN git, SOPS/age-encrypted
+            # as cloudflared-token.sops.yaml, decrypted in-cluster by the apps
+            # Kustomization CR (sops-age secret in flux-system). Never create
+            # it with kubectl — see README.md "enable the tunnel" step. This
+            # Deployment is only included by kustomization.yaml together with
+            # that file (atomic enable), so a missing-Secret state should not
+            # occur; if it does (CreateContainerConfigError, "secret not
+            # found"), the kustomization lines were uncommented separately.
             - name: TUNNEL_TOKEN
               valueFrom:
                 secretKeyRef:

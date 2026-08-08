@@ -1,0 +1,24 @@
+# Apps reconciliation — everything under ./apps/staging. wait: true means
+# `flux get kustomizations` reports real app health, not just "applied".
+# SOPS decryption: secrets live in git encrypted to the cluster age key;
+# the sops-age Secret (flux-system ns) is the ONLY manually-created secret.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./apps/staging
+  prune: true
+  wait: true
+  timeout: 5m
+  dependsOn:
+    - name: infrastructure
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age

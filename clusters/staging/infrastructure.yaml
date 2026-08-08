@@ -1,0 +1,23 @@
+# Infrastructure reconciliation — controllers (ingress, cert-manager, …) land
+# in ./infrastructure and must be healthy BEFORE apps (apps dependsOn this).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./infrastructure
+  prune: true
+  wait: true
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # Same decryption wiring as apps: harmless while ./infrastructure has no
+  # secrets, and removes the future trap of a controller secret failing to
+  # decrypt because only apps had the block.
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
