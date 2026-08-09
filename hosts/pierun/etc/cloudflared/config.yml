@@ -1,0 +1,7 @@
+tunnel: c67c2ab9-0203-4a72-915c-94c4612e9a3a 
+credentials-file: /etc/cloudflared/c67c2ab9-0203-4a72-915c-94c4612e9a3a.json
+
+ingress:
+  - hostname: ssh.kacperhomelab.org
+    service: ssh://localhost:22
+  - service: http_status:404
