@@ -1,0 +1,16 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "kubernetes": {
+    "fileMatch": ["apps/.+\\.yaml$"]
+  },
+  "labels": ["deps"],
+  "prConcurrentLimit": 2,
+  "packageRules": [
+    {
+      "description": "cloudflared is supported ~1 year per release — group and don't spam",
+      "matchPackageNames": ["cloudflare/cloudflared"],
+      "schedule": ["* * 1 */2 *"]
+    }
+  ]
+}
