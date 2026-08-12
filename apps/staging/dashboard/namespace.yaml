@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dashboard
+  labels:
+    app.kubernetes.io/name: dashboard
+  # Deliberately NO prune-disabled annotation (unlike monitoring): Glance is
+  # fully stateless — config lives in git, the only durable state (arch-audit
+  # report) lives on the host and is owned by Ansible. Pruning this namespace
+  # loses nothing.
