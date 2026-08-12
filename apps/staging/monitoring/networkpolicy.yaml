@@ -2,7 +2,8 @@
 # Public Hostname routes are configured in the Cloudflare dashboard, so a
 # compromised Cloudflare account could route public hostnames to ANY
 # in-cluster service (kube API, Flux, future apps). This policy pins the
-# connector to exactly what it needs: Kuma, DNS, and the Cloudflare edge.
+# connector to exactly what it needs: Kuma, Glance, DNS, and the Cloudflare
+# edge.
 # k3s enforces NetworkPolicy out of the box (embedded netpol controller).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -18,13 +19,24 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Uptime Kuma (the only service the tunnel is allowed to reach)
+    # Uptime Kuma (status.kacperhomelab.org)
     - to:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: uptime-kuma
       ports:
         - port: 3001
+          protocol: TCP
+    # Glance dashboard (dash.kacperhomelab.org)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dashboard
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: glance
+      ports:
+        - port: 8080
           protocol: TCP
     # Cluster DNS
     - to:

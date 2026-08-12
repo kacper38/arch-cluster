@@ -3,9 +3,18 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - rbac.yaml
-  # Glance itself (glance.yaml + glance-secrets.sops.yaml + networkpolicy.yaml
-  # + the glance-config configMapGenerator) arrives in the next commit as an
-  # atomic set — Deployment and the Secret it references always ship together,
-  # or the apps Kustomization (wait: true) goes red on
-  # CreateContainerConfigError. Namespace + RBAC land first only because the
-  # SA must exist before its token can be minted.
+  - networkpolicy.yaml
+  # Deployment and its Secret are an atomic pair (same rule as cloudflared in
+  # monitoring): removing either one alone leaves the apps Kustomization
+  # (wait: true) red on a CreateContainerConfigError pod.
+  - glance.yaml
+  - glance-secrets.sops.yaml
+
+# glance.yml IS the dashboard — edit it, commit, done. The hash suffix on the
+# generated ConfigMap rolls the pod on every change; Glance's built-in config
+# auto-reload does NOT survive ConfigMap symlink swaps, never rely on it.
+configMapGenerator:
+  - name: glance-config
+    namespace: dashboard
+    files:
+      - glance.yml

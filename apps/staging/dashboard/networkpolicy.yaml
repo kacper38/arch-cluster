@@ -1,0 +1,76 @@
+# Egress restriction for the dashboard. Glance fetches everything server-side
+# (Kuma, Pi-hole, kube API, feeds) — this pins it to exactly those
+# destinations, so a compromised widget/config can't be used to scan the LAN
+# or reach other in-cluster services. The CVE widget reads loopback
+# (localhost:8080/assets) — NetworkPolicy does not apply to loopback.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: glance-egress
+  namespace: dashboard
+  labels:
+    app.kubernetes.io/part-of: dashboard
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: glance
+  policyTypes:
+    - Egress
+  egress:
+    # Cluster DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Uptime Kuma (monitor check + status-page widget)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: uptime-kuma
+      ports:
+        - port: 3001
+          protocol: TCP
+    # Kubernetes API (Flux status widget). Two rules because k3s' embedded
+    # netpol controller evaluates post-DNAT: the ClusterIP 10.43.0.1:443
+    # becomes the node's LAN IP:6443 — allow both enforcement points.
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - ipBlock:
+            # pierun's LAN IP — DHCP; needs a router reservation (README).
+            cidr: 192.168.178.55/32
+      ports:
+        - port: 6443
+          protocol: TCP
+    # Pi-hole REST API + admin login check (LAN device — DHCP reservation!)
+    - to:
+        - ipBlock:
+            cidr: 192.168.178.53/32
+      ports:
+        - port: 80
+          protocol: TCP
+    # Internet feeds (RSS/HN) + kacperhomelab.org monitor check — https only.
+    # Excludes pod/service CIDRs (k3s defaults) and the home LAN, so the
+    # widget config can never be pointed at internal targets.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+              - 192.168.178.0/24
+      ports:
+        - port: 443
+          protocol: TCP
