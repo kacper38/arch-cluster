@@ -1,0 +1,155 @@
+# Glance dashboard config — git IS the config store (ConfigMap via
+# configMapGenerator; the hash suffix rolls the pod on every change, because
+# Glance's own file-watcher does NOT survive ConfigMap symlink swaps).
+# Secrets never live here — only $-brace env var references resolved by
+# Glance at startup from the glance-secrets Secret (a missing var is a hard
+# startup error, visible in pod logs). NOTE: interpolation runs on the RAW
+# file, comments included — never write a literal dollar-brace var name in a
+# comment (caught by config:validate 2026-08-14).
+server:
+  # Behind cloudflared — trust X-Forwarded-* from the tunnel.
+  proxied: true
+  # Served at /assets/ — the arch-audit hostPath mount, see glance.yaml.
+  assets-path: /app/assets
+
+pages:
+  - name: Control plane
+    columns:
+      - size: small
+        widgets:
+          - type: monitor
+            title: Services
+            cache: 1m
+            sites:
+              - title: kacperhomelab.org
+                url: https://kacperhomelab.org
+                check-url: https://kacperhomelab.org/api/health
+              - title: Uptime Kuma
+                # Click-through goes via the tunnel; the check stays in-cluster.
+                url: https://status.kacperhomelab.org
+                check-url: http://uptime-kuma.monitoring.svc.cluster.local:3001
+              - title: Pi-hole
+                # /admin/ answers 302 → check the login page directly.
+                url: http://192.168.178.53/admin
+                check-url: http://192.168.178.53/admin/login
+
+          - type: dns-stats
+            service: pihole-v6
+            url: http://192.168.178.53
+            password: ${PIHOLE_PASSWORD}
+
+      - size: full
+        widgets:
+          - type: custom-api
+            title: Flux
+            # Token: 1-year SA token (dashboard/glance), SOPS-shipped —
+            # re-mint yearly, see README failure modes. allow-insecure: Glance
+            # has no custom-CA option (checked v0.8.5) and this hop never
+            # leaves the node.
+            url: https://kubernetes.default.svc/apis/kustomize.toolkit.fluxcd.io/v1/kustomizations?limit=50
+            headers:
+              Authorization: Bearer ${FLUX_SA_TOKEN}
+              Accept: application/json
+            allow-insecure: true
+            cache: 2m
+            template: |
+              <ul class="list list-gap-10">
+                {{ range .JSON.Array "items" }}
+                  {{ $ready := "Unknown" }}
+                  {{ range .Array "status.conditions" }}
+                    {{ if eq (.String "type") "Ready" }}{{ $ready = .String "status" }}{{ end }}
+                  {{ end }}
+                  <li class="flex justify-between items-center">
+                    <div>
+                      <div class="color-highlight">{{ .String "metadata.name" }}</div>
+                      <div class="size-h6 color-subdue">{{ .String "status.lastAppliedRevision" }}</div>
+                    </div>
+                    {{ if eq $ready "True" }}
+                      <div class="color-positive">ready</div>
+                    {{ else }}
+                      <div class="color-negative">NOT READY</div>
+                    {{ end }}
+                  </li>
+                {{ end }}
+              </ul>
+
+          - type: custom-api
+            title: CVEs — arch-audit (pierun)
+            # Served by Glance itself from the read-only hostPath mount
+            # (/var/lib/arch-audit, written daily by the Ansible-managed
+            # arch-audit-report.timer). Loopback — no NetworkPolicy involved.
+            url: http://localhost:8080/assets/report.json
+            cache: 1h
+            # Template API notes (docs/custom-api.md @ v0.8.5): root array =
+            # .JSON.Array "" (empty key); no `join` helper exists — string
+            # arrays are rendered by ranging with .String "".
+            template: |
+              {{ $vulns := .JSON.Array "" }}
+              <div class="size-h6 color-subdue margin-bottom-10">
+                {{ $vulns | len }} open advisories — fixable ones first
+              </div>
+              <ul class="list list-gap-10">
+                {{ range $vulns }}
+                  {{ if ne (.String "fixed") "" }}
+                    <li class="flex justify-between items-center">
+                      <div>
+                        <div class="color-highlight">{{ range .Array "packages" }}{{ .String "" }} {{ end }}</div>
+                        <div class="size-h6 color-subdue">{{ .String "name" }} · {{ len (.Array "issues") }} CVEs</div>
+                      </div>
+                      <div class="color-negative">fix: {{ .String "fixed" }}</div>
+                    </li>
+                  {{ end }}
+                {{ end }}
+                {{ range $vulns }}
+                  {{ if eq (.String "fixed") "" }}
+                    <li class="flex justify-between items-center">
+                      <div>
+                        <div>{{ range .Array "packages" }}{{ .String "" }} {{ end }}</div>
+                        <div class="size-h6 color-subdue">{{ .String "name" }} · {{ len (.Array "issues") }} CVEs · severity {{ .String "severity" }}</div>
+                      </div>
+                      <div class="color-subdue">no fix yet</div>
+                    </li>
+                  {{ end }}
+                {{ end }}
+              </ul>
+
+          - type: hacker-news
+            limit: 15
+            collapse-after: 5
+
+      - size: small
+        widgets:
+          - type: bookmarks
+            groups:
+              - title: Homelab
+                links:
+                  - title: Uptime Kuma
+                    url: https://status.kacperhomelab.org
+                  - title: kacperhomelab.org
+                    url: https://kacperhomelab.org
+                  - title: Pi-hole admin
+                    # LAN address — resolves only from home network.
+                    url: http://192.168.178.53/admin
+              - title: Ops
+                links:
+                  - title: arch-cluster repo
+                    url: https://github.com/kacper38/arch-cluster
+                  - title: CI runs
+                    url: https://github.com/kacper38/arch-cluster/actions
+                  - title: Cloudflare Zero Trust
+                    url: https://one.dash.cloudflare.com/
+
+          # Placeholder feed set — edit freely; a change here rolls the pod
+          # via the ConfigMap hash, no restart needed by hand.
+          - type: rss
+            title: News
+            style: vertical-list
+            limit: 20
+            collapse-after: 8
+            feeds:
+              - url: https://archlinux.org/feeds/news/
+                title: Arch Linux
+              - url: https://kubernetes.io/feed.xml
+                title: Kubernetes blog
+              - url: https://lobste.rs/rss
+                title: Lobsters
