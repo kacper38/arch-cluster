@@ -1,0 +1,15 @@
+[Unit]
+Description=Write arch-audit CVE report as JSON for the dashboard
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# No root at runtime: transient uid, systemd owns /var/lib/arch-audit (0755).
+DynamicUser=yes
+StateDirectory=arch-audit
+# Report must stay world-readable — the Glance pod (uid 65534) reads it via a
+# read-only hostPath mount.
+UMask=0022
+# Atomic rename so the pod never reads a half-written file.
+ExecStart=/bin/sh -c 'arch-audit --json > /var/lib/arch-audit/.report.json.tmp && mv /var/lib/arch-audit/.report.json.tmp /var/lib/arch-audit/report.json'
