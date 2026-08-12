@@ -79,3 +79,46 @@
     group: kacper
     mode: "0600"
   when: host_24_7_k3s_kubeconfig.stat.exists
+
+- name: Install arch-audit (CVE report source for the dashboard)
+  ansible.builtin.package:
+    name: arch-audit
+    state: present
+
+- name: Install arch-audit report service
+  ansible.builtin.copy:
+    src: arch-audit-report.service
+    dest: /etc/systemd/system/arch-audit-report.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: host_24_7_audit_service
+
+- name: Install arch-audit report timer
+  ansible.builtin.copy:
+    src: arch-audit-report.timer
+    dest: /etc/systemd/system/arch-audit-report.timer
+    owner: root
+    group: root
+    mode: "0644"
+  register: host_24_7_audit_timer
+
+- name: Enable arch-audit report timer
+  ansible.builtin.systemd_service:
+    name: arch-audit-report.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ host_24_7_audit_service.changed or host_24_7_audit_timer.changed }}"
+
+- name: Check whether an arch-audit report exists yet
+  ansible.builtin.stat:
+    path: /var/lib/arch-audit/report.json
+  register: host_24_7_audit_report
+
+- name: Run arch-audit report once so the Glance hostPath mount has a file
+  # The dashboard Deployment hostPath-mounts /var/lib/arch-audit with
+  # type: Directory — this play must run before Glance can schedule.
+  ansible.builtin.systemd_service:
+    name: arch-audit-report.service
+    state: started
+  when: not host_24_7_audit_report.stat.exists

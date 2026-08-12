@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily arch-audit CVE report for the dashboard
+
+[Timer]
+OnCalendar=daily
+# Be polite to security.archlinux.org.
+RandomizedDelaySec=15m
+# Catch up after downtime — the report otherwise goes silently stale.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
