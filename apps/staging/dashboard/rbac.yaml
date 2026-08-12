@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: glance
+  namespace: dashboard
+  labels:
+    app.kubernetes.io/name: glance
+    app.kubernetes.io/part-of: dashboard
+# The Glance pod does NOT mount this SA (automountServiceAccountToken: false).
+# Instead a 1-year token is minted from it and shipped SOPS-encrypted in
+# glance-secrets.sops.yaml (same flow as cloudflared-token):
+#   kubectl -n dashboard create token glance --duration=8760h
+# Re-mint + re-encrypt + commit when it expires — README failure mode.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: glance-flux-reader
+  labels:
+    app.kubernetes.io/name: glance
+    app.kubernetes.io/part-of: dashboard
+rules:
+  # Deliberately ONLY Kustomizations — no gitrepositories (repo URLs are
+  # recon), no secrets, nothing else. The dashboard renders name + Ready
+  # condition + revision, and that is all this token can read.
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: glance-flux-reader
+  labels:
+    app.kubernetes.io/name: glance
+    app.kubernetes.io/part-of: dashboard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: glance-flux-reader
+subjects:
+  - kind: ServiceAccount
+    name: glance
+    namespace: dashboard
