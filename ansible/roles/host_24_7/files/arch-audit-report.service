@@ -5,8 +5,11 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-# No root at runtime: transient uid, systemd owns /var/lib/arch-audit (0755).
-DynamicUser=yes
+# User=nobody, NOT DynamicUser=yes: DynamicUser puts StateDirectory under
+# /var/lib/private (0700 root) behind a symlink — unreadable for the operator
+# and an ugly coupling for the pod's hostPath mount. nobody is uid 65534,
+# the same identity the Glance pod runs as.
+User=nobody
 StateDirectory=arch-audit
 # Report must stay world-readable — the Glance pod (uid 65534) reads it via a
 # read-only hostPath mount.

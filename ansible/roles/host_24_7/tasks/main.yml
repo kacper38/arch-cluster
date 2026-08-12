@@ -103,6 +103,28 @@
     mode: "0644"
   register: host_24_7_audit_timer
 
+# Migration from the first (DynamicUser=yes) revision of the unit: it left
+# /var/lib/arch-audit as a symlink into /var/lib/private (0700 root) —
+# unreadable for non-root and wrong for the pod's hostPath. Remove both; the
+# User=nobody unit recreates a real, world-readable directory on next run.
+- name: Check whether /var/lib/arch-audit is a DynamicUser-era symlink
+  ansible.builtin.stat:
+    path: /var/lib/arch-audit
+    follow: false
+  register: host_24_7_audit_dir
+
+- name: Remove DynamicUser-era symlink
+  ansible.builtin.file:
+    path: /var/lib/arch-audit
+    state: absent
+  when: host_24_7_audit_dir.stat.islnk | default(false)
+
+- name: Remove DynamicUser-era private state directory
+  ansible.builtin.file:
+    path: /var/lib/private/arch-audit
+    state: absent
+  when: host_24_7_audit_dir.stat.islnk | default(false)
+
 - name: Enable arch-audit report timer
   ansible.builtin.systemd_service:
     name: arch-audit-report.timer
